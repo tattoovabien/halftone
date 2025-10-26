@@ -51,7 +51,9 @@
                 return {
                     background: colorMap[color] || '',
                     height: '8px',
-                    borderRadius: '4px'
+                    borderRadius: '4px',
+                    WebkitAppearance: 'slider-horizontal',
+                    appearance: 'none'
                 };
             };
 
@@ -71,6 +73,28 @@
                         className="w-full"
                         style={color ? getSliderStyle() : {}}
                     />
+                    <style>{`
+                        input[type=range]::-webkit-slider-thumb {
+                            -webkit-appearance: none;
+                            appearance: none;
+                            width: 16px;
+                            height: 16px;
+                            border-radius: 50%;
+                            background: #1f2937;
+                            cursor: pointer;
+                            border: 2px solid white;
+                            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                        }
+                        input[type=range]::-moz-range-thumb {
+                            width: 16px;
+                            height: 16px;
+                            border-radius: 50%;
+                            background: #1f2937;
+                            cursor: pointer;
+                            border: 2px solid white;
+                            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                        }
+                    `}</style>
                 </div>
             );
         }
@@ -153,6 +177,35 @@
                     reader.readAsDataURL(files[0]);
                 }
             };
+
+            // Handle clipboard paste
+            useEffect(() => {
+                const handlePaste = (e) => {
+                    const items = e.clipboardData?.items;
+                    if (!items) return;
+                    
+                    for (let i = 0; i < items.length; i++) {
+                        if (items[i].type.indexOf('image') !== -1) {
+                            const blob = items[i].getAsFile();
+                            const reader = new FileReader();
+                            reader.onload = (event) => {
+                                const img = new Image();
+                                img.onload = () => {
+                                    setImage(img);
+                                    setContourPoints(null);
+                                    setSelectedPoint(null);
+                                };
+                                img.src = event.target.result;
+                            };
+                            reader.readAsDataURL(blob);
+                            break;
+                        }
+                    }
+                };
+                
+                window.addEventListener('paste', handlePaste);
+                return () => window.removeEventListener('paste', handlePaste);
+            }, []);
 
             const resetBlackAndWhite = () => {
                 setShowOriginal(0);
@@ -570,6 +623,7 @@
                                         </svg>
                                         <p className="text-lg">Drag and drop image here</p>
                                         <p className="text-sm mt-2">or click Upload Image button</p>
+                                        <p className="text-xs mt-1 text-gray-400">You can also paste an image (Ctrl+V / Cmd+V)</p>
                                     </div>
                                 ) : (
                                     <div className="relative w-full h-full">
