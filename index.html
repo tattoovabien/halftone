@@ -38,63 +38,83 @@
         );
 
         function SliderControl({ label, value, onChange, min = 0, max = 100, step = 1, color }) {
-            const getSliderStyle = () => {
-                if (!color) return {};
-                const colorMap = {
-                    red: 'linear-gradient(to right, #ffffff, #ff0000)',
-                    yellow: 'linear-gradient(to right, #ffffff, #ffff00)',
-                    green: 'linear-gradient(to right, #ffffff, #00ff00)',
-                    cyan: 'linear-gradient(to right, #ffffff, #00ffff)',
-                    blue: 'linear-gradient(to right, #ffffff, #0000ff)',
-                    magenta: 'linear-gradient(to right, #ffffff, #ff00ff)'
-                };
-                return {
-                    background: colorMap[color] || '',
-                    height: '8px',
-                    borderRadius: '4px',
-                    WebkitAppearance: 'slider-horizontal',
-                    appearance: 'none'
-                };
-            };
-
             return (
                 <div>
                     <div className="flex justify-between text-sm mb-1">
                         <label className="text-gray-700">{label}</label>
                         <span className="text-gray-500">{value}</span>
                     </div>
-                    <input
-                        type="range"
-                        min={min}
-                        max={max}
-                        step={step}
-                        value={value}
-                        onChange={(e) => onChange(Number(e.target.value))}
-                        className="w-full"
-                        style={color ? getSliderStyle() : {}}
-                    />
-                    <style>{`
-                        input[type=range]::-webkit-slider-thumb {
-                            -webkit-appearance: none;
-                            appearance: none;
-                            width: 16px;
-                            height: 16px;
-                            border-radius: 50%;
-                            background: #1f2937;
-                            cursor: pointer;
-                            border: 2px solid white;
-                            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-                        }
-                        input[type=range]::-moz-range-thumb {
-                            width: 16px;
-                            height: 16px;
-                            border-radius: 50%;
-                            background: #1f2937;
-                            cursor: pointer;
-                            border: 2px solid white;
-                            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-                        }
-                    `}</style>
+                    {color ? (
+                        <div>
+                            <input
+                                type="range"
+                                min={min}
+                                max={max}
+                                step={step}
+                                value={value}
+                                onChange={(e) => onChange(Number(e.target.value))}
+                                className="w-full colored-slider"
+                                data-color={color}
+                            />
+                            <style>{`
+                                .colored-slider {
+                                    -webkit-appearance: none;
+                                    appearance: none;
+                                    height: 8px;
+                                    border-radius: 4px;
+                                    outline: none;
+                                }
+                                .colored-slider[data-color="red"] {
+                                    background: linear-gradient(to right, #ffffff, #ff0000);
+                                }
+                                .colored-slider[data-color="yellow"] {
+                                    background: linear-gradient(to right, #ffffff, #ffff00);
+                                }
+                                .colored-slider[data-color="green"] {
+                                    background: linear-gradient(to right, #ffffff, #00ff00);
+                                }
+                                .colored-slider[data-color="cyan"] {
+                                    background: linear-gradient(to right, #ffffff, #00ffff);
+                                }
+                                .colored-slider[data-color="blue"] {
+                                    background: linear-gradient(to right, #ffffff, #0000ff);
+                                }
+                                .colored-slider[data-color="magenta"] {
+                                    background: linear-gradient(to right, #ffffff, #ff00ff);
+                                }
+                                .colored-slider::-webkit-slider-thumb {
+                                    -webkit-appearance: none;
+                                    appearance: none;
+                                    width: 16px;
+                                    height: 16px;
+                                    border-radius: 50%;
+                                    background: #1f2937;
+                                    cursor: pointer;
+                                    border: 2px solid white;
+                                    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                                }
+                                .colored-slider::-moz-range-thumb {
+                                    width: 16px;
+                                    height: 16px;
+                                    border-radius: 50%;
+                                    background: #1f2937;
+                                    cursor: pointer;
+                                    border: 2px solid white;
+                                    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                                }
+                            `}</style>
+                        </div>
+                    ) : (
+                        <input
+                            type="range"
+                            min={min}
+                            max={max}
+                            step={step}
+                            value={value}
+                            onChange={(e) => onChange(Number(e.target.value))}
+                            className="w-full"
+                        />
+                    )}
                 </div>
             );
         }
@@ -102,7 +122,6 @@
         function HalftoneGenerator() {
             const [image, setImage] = useState(null);
             const [processedImage, setProcessedImage] = useState(null);
-            const [showOriginal, setShowOriginal] = useState(0);
             const [reds, setReds] = useState(50);
             const [yellows, setYellows] = useState(50);
             const [greens, setGreens] = useState(50);
@@ -208,7 +227,6 @@
             }, []);
 
             const resetBlackAndWhite = () => {
-                setShowOriginal(0);
                 setReds(50);
                 setYellows(50);
                 setGreens(50);
@@ -400,13 +418,6 @@
                 const offsetX = (1080 - processedImage.width) / 2;
                 const offsetY = (1080 - processedImage.height) / 2;
                 
-                if (showOriginal > 0 && image) {
-                    ctx.save();
-                    ctx.globalAlpha = showOriginal / 100;
-                    ctx.drawImage(image, offsetX, offsetY, processedImage.width, processedImage.height);
-                    ctx.restore();
-                }
-                
                 if (contourPoints) {
                     ctx.save();
                     ctx.beginPath();
@@ -425,7 +436,7 @@
                 if (contourPoints) {
                     ctx.restore();
                 }
-            }, [processedImage, contourPoints, showOriginal, image]);
+            }, [processedImage, contourPoints, image]);
 
             const generateContour = () => {
                 if (!processedImage) return;
@@ -671,10 +682,6 @@
                                         <button onClick={resetBlackAndWhite} className="text-xs text-blue-500 hover:text-blue-700 underline">Reset</button>
                                     </div>
                                     <div className="space-y-3">
-                                        <div>
-                                            <SliderControl label="Show Original" value={showOriginal} onChange={setShowOriginal} min={0} max={100} />
-                                            <p className="text-xs text-gray-500 mt-1 italic">Not visible in download</p>
-                                        </div>
                                         <SliderControl label="Reds" value={reds} onChange={setReds} color="red" />
                                         <SliderControl label="Yellows" value={yellows} onChange={setYellows} color="yellow" />
                                         <SliderControl label="Greens" value={greens} onChange={setGreens} color="green" />
