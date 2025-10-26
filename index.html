@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Halftone Generator</title>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useRef, useEffect } = React;
+
+        // Lucide icons as inline SVG components
+        const Upload = ({ size = 20 }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+        );
+
+        const Download = ({ size = 20 }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+        );
+
+        const Plus = ({ size = 20 }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+        );
+
+        function HalftoneGenerator() {
+          const [image, setImage] = useState(null);
+          const [processedImage, setProcessedImage] = useState(null);
+          
+          const [showOriginal, setShowOriginal] = useState(0);
+          const [reds, setReds] = useState(50);
+          const [yellows, setYellows] = useState(50);
+          const [greens, setGreens] = useState(50);
+          const [cyans, setCyans] = useState(50);
+          const [blues, setBlues] = useState(50);
+          const [magentas, setMagentas] = useState(50);
+          const [brightness, setBrightness] = useState(0);
+          const [contrast, setContrast] = useState(0);
+          
+          const [maxDotSize, setMaxDotSize] = useState(10);
+          const [minDotSize, setMinDotSize] = useState(0);
+          const [dotDistance, setDotDistance] = useState(10);
+          const [gridAngle, setGridAngle] = useState(45);
+          const [randomize, setRandomize] = useState(0);
+          const [organic, setOrganic] = useState(0);
+          const [melt, setMelt] = useState(0);
+          const [threshold, setThreshold] = useState(128);
+          
+          const [contourPoints, setContourPoints] = useState(null);
+          const [selectedPoint, setSelectedPoint] = useState(null);
+          const [isDragging, setIsDragging] = useState(false);
+          const [addingPoint, setAddingPoint] = useState(false);
+          const [isDraggingOver, setIsDraggingOver] = useState(false);
+          
+          const canvasRef = useRef(null);
+          const displayCanvasRef = useRef(null);
+          const fileInputRef = useRef(null);
+
+          const handleImageUpload = (e) => {
+            const file = e.target.files[0];
+            if (file) {
+              const reader = new FileReader();
+              reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                  setImage(img);
+                  setContourPoints(null);
+                  setSelectedPoint(null);
+                };
+                img.src = event.target.result;
+              };
+              reader.readAsDataURL(file);
+            }
+          };
+
+          const handleDragOver = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDraggingOver(true);
+          };
+
+          const handleDragLeave = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDraggingOver(false);
+          };
+
+          const handleDrop = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDraggingOver(false);
+            
+            const files = e.dataTransfer.files;
+            if (files && files[0] && files[0].type.startsWith('image/')) {
+              const reader = new FileReader();
+              reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                  setImage(img);
+                  setContourPoints(null);
+                  setSelectedPoint(null);
+                };
+                img.src = event.target.result;
+              };
+              reader.readAsDataURL(files[0]);
+            }
+          };
+
+          const resetBlackAndWhite = () => {
+            setShowOriginal(0);
+            setReds(50);
+            setYellows(50);
+            setGreens(50);
+            setCyans(50);
+            setBlues(50);
+            setMagentas(50);
+            setBrightness(0);
+            setContrast(0);
+          };
+
+          const resetHalftonePattern = () => {
+            setMaxDotSize(10);
+            setMinDotSize(0);
+            setDotDistance(10);
+            setGridAngle(45);
+            setRandomize(0);
+            setOrganic(0);
+            setMelt(0);
+            setThreshold(128);
+          };
+
+          useEffect(() => {
+            if (!image) return;
+            
+            const maxSize = 1000;
+            const scale = Math.min(maxSize / image.width, maxSize / image.height);
+            const scaledWidth = Math.round(image.width * scale);
+            const scaledHeight = Math.round(image.height * scale);
+            
+            const canvas = canvasRef.current;
+            const ctx = canvas.getContext('2d');
+            
+            canvas.width = scaledWidth;
+            canvas.height = scaledHeight;
+            
+            ctx.drawImage(image, 0, 0, scaledWidth, scaledHeight);
+            
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+            
+            for (let i = 0; i < data.length; i += 4) {
+              const r = data[i];
+              const g = data[i + 1];
+              const b = data[i + 2];
+              
+              let gray;
+              const max = Math.max(r, g, b);
+              const min = Math.min(r, g, b);
+              const chroma = max - min;
+              
+              if (chroma === 0) {
+                gray = (r + g + b) / 3;
+              } else {
+                const rWeight = (reds / 50);
+                const gWeight = (greens / 50);
+                const bWeight = (blues / 50);
+                const yWeight = (yellows / 50);
+                const cWeight = (cyans / 50);
+                const mWeight = (magentas / 50);
+                
+                gray = (r * rWeight + g * gWeight + b * bWeight) / 3;
+                
+                if (r > 128 && g > 128 && b < 128) gray *= yWeight;
+                if (g > 128 && b > 128 && r < 128) gray *= cWeight;
+                if (r > 128 && b > 128 && g < 128) gray *= mWeight;
+              }
+              
+              gray += brightness * 2.55;
+              gray = ((gray - 128) * (1 + contrast / 100)) + 128;
+              gray = Math.max(0, Math.min(255, gray));
+              
+              data[i] = data[i + 1] = data[i + 2] = gray;
+            }
+            
+            ctx.putImageData(imageData, 0, 0);
+            
+            const halftoneCanvas = document.createElement('canvas');
+            halftoneCanvas.width = canvas.width;
+            halftoneCanvas.height = canvas.height;
+            const halftoneCtx = halftoneCanvas.getContext('2d');
+            
+            halftoneCtx.fillStyle = 'white';
+            halftoneCtx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            halftoneCtx.fillStyle = 'black';
+            
+            const angleRad = (gridAngle * Math.PI) / 180;
+            const cosAngle = Math.cos(angleRad);
+            const sinAngle = Math.sin(angleRad);
+            
+            const extend = Math.max(canvas.width, canvas.height);
+            
+            const grayData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+            
+            const organicFactor = organic / 100;
+            const randomizeFactor = randomize / 100;
+            
+            for (let gridY = -extend; gridY < canvas.height + extend; gridY += dotDistance) {
+              for (let gridX = -extend; gridX < canvas.width + extend; gridX += dotDistance) {
+                const drawX = gridX * cosAngle - gridY * sinAngle;
+                const drawY = gridX * sinAngle + gridY * cosAngle;
+                
+                const sampleX = Math.floor(drawX);
+                const sampleY = Math.floor(drawY);
+                
+                if (sampleX >= 0 && sampleX < canvas.width && sampleY >= 0 && sampleY < canvas.height) {
+                  const index = (sampleY * canvas.width + sampleX) * 4;
+                  const grayValue = grayData[index];
+                  
+                  const t = (255 - grayValue) / 255;
+                  let baseRadius = minDotSize + t * (maxDotSize - minDotSize);
+                  
+                  if (randomizeFactor > 0) {
+                    const sizeVariation = (Math.random() - 0.5) * randomizeFactor * 2;
+                    baseRadius = Math.max(0, baseRadius * (1 + sizeVariation));
+                  }
+                  
+                  if (baseRadius > 0.5) {
+                    const posOffsetX = (Math.random() - 0.5) * organicFactor * 3;
+                    const posOffsetY = (Math.random() - 0.5) * organicFactor * 3;
+                    
+                    const radiusVariation = 1 + (Math.random() - 0.5) * organicFactor * 0.3;
+                    const radius = baseRadius * radiusVariation;
+                    
+                    const scaleX = 1 + (Math.random() - 0.5) * organicFactor * 0.4;
+                    const scaleY = 1 + (Math.random() - 0.5) * organicFactor * 0.4;
+                    
+                    const rotation = Math.random() * Math.PI * 2 * organicFactor;
+                    
+                    if (organicFactor < 0.1) {
+                      halftoneCtx.beginPath();
+                      halftoneCtx.arc(drawX + posOffsetX, drawY + posOffsetY, radius, 0, Math.PI * 2);
+                      halftoneCtx.fill();
+                    } else {
+                      halftoneCtx.save();
+                      halftoneCtx.translate(drawX + posOffsetX, drawY + posOffsetY);
+                      halftoneCtx.rotate(rotation);
+                      
+                      if (Math.random() > organicFactor * 0.3) {
+                        halftoneCtx.beginPath();
+                        halftoneCtx.ellipse(0, 0, radius * scaleX, radius * scaleY, 0, 0, Math.PI * 2);
+                        halftoneCtx.fill();
+                      } else {
+                        halftoneCtx.beginPath();
+                        const points = 8;
+                        for (let i = 0; i < points; i++) {
+                          const angle = (i / points) * Math.PI * 2;
+                          const radiusVar = radius * (0.8 + Math.random() * 0.4);
+                          const px = Math.cos(angle) * radiusVar * scaleX;
+                          const py = Math.sin(angle) * radiusVar * scaleY;
+                          if (i === 0) {
+                            halftoneCtx.moveTo(px, py);
+                          } else {
+                            halftoneCtx.lineTo(px, py);
+                          }
+                        }
+                        halftoneCtx.closePath();
+                        halftoneCtx.fill();
+                      }
+                      
+                      halftoneCtx.restore();
+                    }
+                  }
+                }
+              }
+            }
+            
+            const processCanvas = document.createElement('canvas');
+            processCanvas.width = canvas.width;
+            processCanvas.height = canvas.height;
+            const processCtx = processCanvas.getContext('2d');
+            
+            if (melt > 0) {
+              processCtx.filter = `blur(${melt * 0.2}px)`;
+              processCtx.drawImage(halftoneCanvas, 0, 0);
+              processCtx.filter = 'none';
+            } else {
+              processCtx.drawImage(halftoneCanvas, 0, 0);
+            }
+            
+            const processData = processCtx.getImageData(0, 0, canvas.width, canvas.height);
+            const processPixels = processData.data;
+            
+            for (let i = 0; i < processPixels.length; i += 4) {
+              const gray = processPixels[i];
+              const effectiveThreshold = Math.max(1, threshold);
+              const bw = gray < effectiveThreshold ? 0 : 255;
+              processPixels[i] = bw;
+              processPixels[i + 1] = bw;
+              processPixels[i + 2] = bw;
+            }
+            
+            processCtx.putImageData(processData, 0, 0);
+            
+            setProcessedImage(processCanvas);
+          }, [image, reds, yellows, greens, cyans, blues, magentas, brightness, contrast, maxDotSize, minDotSize, dotDistance, gridAngle, randomize, organic, melt, threshold]);
+
+          useEffect(() => {
+            if (!processedImage) return;
+            
+            const canvas = displayCanvasRef.current;
+            const ctx = canvas.getContext('2d');
+            
+            canvas.width = 1080;
+            canvas.height = 1080;
+            
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, 1080, 1080);
+            
+            const offsetX = (1080 - processedImage.width) / 2;
+            const offsetY = (1080 - processedImage.height) / 2;
+            
+            if (showOriginal > 0 && image) {
+              ctx.save();
+              ctx.globalAlpha = showOriginal / 100;
+              ctx.drawImage(image, offsetX, offsetY, processedImage.width, processedImage.height);
+              ctx.restore();
+            }
+            
+            if (contourPoints) {
+              ctx.save();
+              ctx.beginPath();
+              contourPoints.forEach((point, i) => {
+                const x = point.x + offsetX;
+                const y = point.y + offsetY;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+              });
+              ctx.closePath();
+              ctx.clip();
+            }
+            
+            ctx.drawImage(processedImage, offsetX, offsetY);
+            
+            if (contourPoints) {
+              ctx.restore();
+            }
+          }, [processedImage, contourPoints, showOriginal, image]);
+
+          const generateContour = () => {
+            if (!processedImage) return;
+            
+            const canvas = canvasRef.current;
+            const ctx = canvas.getContext('2d');
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+            
+            let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
+            
+            for (let y = 0; y < canvas.height; y++) {
+              for (let x = 0; x < canvas.width; x++) {
+                const i = (y * canvas.width + x) * 4;
+                const brightness = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                
+                if (brightness < 250) {
+                  if (x < minX) minX = x;
+                  if (x > maxX) maxX = x;
+                  if (y < minY) minY = y;
+                  if (y > maxY) maxY = y;
+                }
+              }
+            }
+            
+            const margin = 20;
+            minX = Math.max(0, minX - margin);
+            minY = Math.max(0, minY - margin);
+            maxX = Math.min(canvas.width, maxX + margin);
+            maxY = Math.min(canvas.height, maxY + margin);
+            
+            const points = [
+              { x: minX, y: minY },
+              { x: (minX + maxX) / 2, y: minY },
+              { x: maxX, y: minY },
+              { x: maxX, y: (minY + maxY) / 2 },
+              { x: maxX, y: maxY },
+              { x: (minX + maxX) / 2, y: maxY },
+              { x: minX, y: maxY },
+              { x: minX, y: (minY + maxY) / 2 }
+            ];
+            
+            setContourPoints(points);
+          };
+
+          const getCanvasCoords = (e) => {
+            const canvas = displayCanvasRef.current;
+            const rect = canvas.getBoundingClientRect();
+            
+            const offsetX = (1080 - processedImage.width) / 2;
+            const offsetY = (1080 - processedImage.height) / 2;
+            
+            const canvasX = ((e.clientX - rect.left) / rect.width) * 1080;
+            const canvasY = ((e.clientY - rect.top) / rect.height) * 1080;
+            
+            const x = canvasX - offsetX;
+            const y = canvasY - offsetY;
+            
+            return { x, y };
+          };
+
+          const handleCanvasMouseDown = (e) => {
+            if (!contourPoints) return;
+            
+            const { x, y } = getCanvasCoords(e);
+            
+            if (addingPoint) {
+              let closestEdge = 0;
+              let minDist = Infinity;
+              
+              for (let i = 0; i < contourPoints.length; i++) {
+                const p1 = contourPoints[i];
+                const p2 = contourPoints[(i + 1) % contourPoints.length];
+                
+                const dist = distanceToSegment(x, y, p1.x, p1.y, p2.x, p2.y);
+                if (dist < minDist) {
+                  minDist = dist;
+                  closestEdge = i;
+                }
+              }
+              
+              const newPoints = [...contourPoints];
+              newPoints.splice(closestEdge + 1, 0, { x, y });
+              setContourPoints(newPoints);
+              setAddingPoint(false);
+            } else {
+              const threshold = 15;
+              const pointIndex = contourPoints.findIndex(p => 
+                Math.hypot(p.x - x, p.y - y) < threshold
+              );
+              
+              if (pointIndex >= 0) {
+                setSelectedPoint(pointIndex);
+                setIsDragging(true);
+              }
+            }
+          };
+
+          const handleCanvasMouseMove = (e) => {
+            if (isDragging && selectedPoint !== null && contourPoints) {
+              const { x, y } = getCanvasCoords(e);
+              
+              const newPoints = [...contourPoints];
+              const offsetX = (1080 - processedImage.width) / 2;
+              const offsetY = (1080 - processedImage.height) / 2;
+              
+              const canvasX = x + offsetX;
+              const canvasY = y + offsetY;
+              
+              const clampedCanvasX = Math.max(0, Math.min(1080, canvasX));
+              const clampedCanvasY = Math.max(0, Math.min(1080, canvasY));
+              
+              const clampedX = clampedCanvasX - offsetX;
+              const clampedY = clampedCanvasY - offsetY;
+              
+              newPoints[selectedPoint] = { x: clampedX, y: clampedY };
+              setContourPoints(newPoints);
+            }
+          };
+
+          const handleCanvasMouseUp = () => {
+            setIsDragging(false);
+          };
+
+          useEffect(() => {
+            const handleKeyDown = (e) => {
+              if ((e.key === 'Delete' || e.key === 'Backspace') && selectedPoint !== null && contourPoints && contourPoints.length > 3) {
+                const newPoints = contourPoints.filter((_, i) => i !== selectedPoint);
+                setContourPoints(newPoints);
+                setSelectedPoint(null);
+                e.preventDefault();
+              }
+              
+              if ((e.key === '+' || e.key === '=') && contourPoints && !addingPoint) {
+                setAddingPoint(true);
+                e.preventDefault();
+              }
+            };
+            
+            window.addEventListener('keydown', handleKeyDown);
+            return () => window.removeEventListener('keydown', handleKeyDown);
+          }, [selectedPoint, contourPoints, addingPoint]);
+
+          const distanceToSegment = (px, py, x1, y1, x2, y2) => {
+            const A = px - x1;
+            const B = py - y1;
+            const C = x2 - x1;
+            const D = y2 - y1;
+            
+            const dot = A * C + B * D;
+            const lenSq = C * C + D * D;
+            let param = -1;
+            
+            if (lenSq !== 0) param = dot / lenSq;
+            
+            let xx, yy;
+            
+            if (param < 0) {
+              xx = x1;
+              yy = y1;
+            } else if (param > 1) {
+              xx = x2;
+              yy = y2;
+            } else {
+              xx = x1 + param * C;
+              yy = y1 + param * D;
+            }
+            
+            const dx = px - xx;
+            const dy = py - yy;
+            return Math.sqrt(dx * dx + dy * dy);
+          };
+
+          const handleDownload = () => {
+            if (!processedImage) return;
+            
+            let tempCanvas, tempCtx;
+            
+            if (contourPoints && contourPoints.length > 0) {
+              let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+              contourPoints.forEach(p => {
+                minX = Math.min(minX, p.x);
+                minY = Math.min(minY, p.y);
+                maxX = Math.max(maxX, p.x);
+                maxY = Math.max(maxY, p.y);
+              });
+              
+              const width = Math.ceil(maxX - minX);
+              const height = Math.ceil(maxY - minY);
+              
+              tempCanvas = document.createElement('canvas');
+              tempCanvas.width = width;
+              tempCanvas.height = height;
+              tempCtx = tempCanvas.getContext('2d');
+              
+              tempCtx.clearRect(0, 0, width, height);
+              
+              tempCtx.beginPath();
+              contourPoints.forEach((point, i) => {
+                const x = point.x - minX;
+                const y = point.y - minY;
+                if (i === 0) tempCtx.moveTo(x, y);
+                else tempCtx.lineTo(x, y);
+              });
+              tempCtx.closePath();
+              tempCtx.clip();
+              
+              tempCtx.fillStyle = 'white';
+              tempCtx.fillRect(0, 0, width, height);
+              
+              tempCtx.drawImage(processedImage, -minX, -minY);
+            } else {
+              tempCanvas = document.createElement('canvas');
+              tempCanvas.width = processedImage.width;
+              tempCanvas.height = processedImage.height;
+              tempCtx = tempCanvas.getContext('2d');
+              
+              tempCtx.fillStyle = 'white';
+              tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+              
+              tempCtx.drawImage(processedImage, 0, 0);
+            }
+            
+            const dataURL = tempCanvas.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.download = 'halftone-image.png';
+            link.href = dataURL;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          };
+
+          return (
+            <div className="min-h-screen bg-gray-50 flex">
+              <div className="flex-1 p-8 flex items-center justify-center">
+                <div className="bg-white rounded-lg shadow p-6">
+                  <div 
+                    className="relative border-2 border-gray-200 rounded bg-white overflow-hidden"
+                    style={{ 
+                      width: '1080px', 
+                      height: '1080px', 
+                      maxWidth: '100%', 
+                      maxHeight: 'calc(100vh - 100px)',
+                      cursor: isDraggingOver ? 'copy' : 'default'
+                    }}
+                    onMouseMove={handleCanvasMouseMove}
+                    onMouseUp={handleCanvasMouseUp}
+                    onMouseLeave={handleCanvasMouseUp}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                  >
+                    {!image ? (
+                      <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                        <svg className="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                        <p className="text-lg">Drag and drop image here</p>
+                        <p className="text-sm mt-2">or click Upload Image button</p>
+                      </div>
+
+              <div className="w-80 bg-white border-l border-gray-200 p-6 overflow-y-auto" style={{ maxHeight: '100vh' }}>
+                <div className="space-y-6">
+                  <h1 className="text-2xl font-bold text-gray-900">Halftone Generator</h1>
+                  
+                  <div>
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleImageUpload}
+                      accept="image/*"
+                      className="hidden"
+                    />
+                    <button
+                      onClick={() => fileInputRef.current.click()}
+                      className="w-full flex items-center justify-center gap-2 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+                    >
+                      <Upload size={20} />
+                      Upload Image
+                    </button>
+                  </div>
+
+                  {image && (
+                    <div>
+                      <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-lg font-semibold">Black & White</h2>
+                        <button
+                          onClick={resetBlackAndWhite}
+                          className="text-xs text-blue-500 hover:text-blue-700 underline"
+                        >
+                          Reset
+                        </button>
+                      </div>
+                      <div className="space-y-3">
+                        <div>
+                          <SliderControl label="Show Original" value={showOriginal} onChange={setShowOriginal} min={0} max={100} />
+                          <p className="text-xs text-gray-500 mt-1 italic">Not visible in download</p>
+                        </div>
+                        <SliderControl label="Reds" value={reds} onChange={setReds} color="red" />
+                        <SliderControl label="Yellows" value={yellows} onChange={setYellows} color="yellow" />
+                        <SliderControl label="Greens" value={greens} onChange={setGreens} color="green" />
+                        <SliderControl label="Cyans" value={cyans} onChange={setCyans} color="cyan" />
+                        <SliderControl label="Blues" value={blues} onChange={setBlues} color="blue" />
+                        <SliderControl label="Magentas" value={magentas} onChange={setMagentas} color="magenta" />
+                        <SliderControl label="Brightness" value={brightness} onChange={setBrightness} min={-100} max={100} />
+                        <SliderControl label="Contrast" value={contrast} onChange={setContrast} min={-100} max={100} />
+                      </div>
+                    </div>
+                  )}
+
+                  {image && (
+                    <div>
+                      <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-lg font-semibold">Halftone Pattern</h2>
+                        <button
+                          onClick={resetHalftonePattern}
+                          className="text-xs text-blue-500 hover:text-blue-700 underline"
+                        >
+                          Reset
+                        </button>
+                      </div>
+                      <div className="space-y-3">
+                        <SliderControl label="Max Dot Size" value={maxDotSize} onChange={setMaxDotSize} min={1} max={30} />
+                        <SliderControl label="Min Dot Size" value={minDotSize} onChange={setMinDotSize} min={0} max={20} />
+                        <SliderControl label="Dot Distance" value={dotDistance} onChange={setDotDistance} min={2} max={20} step={0.5} />
+                        <SliderControl label="Grid Angle" value={gridAngle} onChange={setGridAngle} min={0} max={90} />
+                        <div>
+                          <SliderControl label="Randomize" value={randomize} onChange={setRandomize} min={0} max={100} />
+                          <p className="text-xs text-gray-500 mt-1 italic">Randomizes size of each dot</p>
+                        </div>
+                        <div>
+                          <SliderControl label="Organic" value={organic} onChange={setOrganic} min={0} max={100} />
+                          <p className="text-xs text-gray-500 mt-1 italic">Makes the shape of the dots irregular</p>
+                        </div>
+                        <div>
+                          <SliderControl label="Melt" value={melt} onChange={setMelt} min={0} max={20} />
+                          <p className="text-xs text-gray-500 mt-1 italic">Melts dots together (a blur effect)</p>
+                        </div>
+                        <div>
+                          <SliderControl label="Threshold" value={threshold} onChange={setThreshold} min={0} max={255} />
+                          <p className="text-xs text-gray-500 mt-1 italic">Decides which pixels become black after the melt effect</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {processedImage && (
+                    <div>
+                      <h2 className="text-lg font-semibold mb-4">Contour (Optional)</h2>
+                      <div className="space-y-2">
+                        {!contourPoints ? (
+                          <button
+                            onClick={generateContour}
+                            className="w-full bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600"
+                          >
+                            Generate Contour
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => setAddingPoint(!addingPoint)}
+                              className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded ${
+                                addingPoint ? 'bg-green-600 text-white' : 'bg-green-500 text-white hover:bg-green-600'
+                              }`}
+                            >
+                              <Plus size={20} />
+                              {addingPoint ? 'Click contour to add point' : 'Add Point (+)'}
+                            </button>
+                            <p className="text-sm text-gray-600">Drag handles to adjust. Press + to add, Delete/Backspace to remove.</p>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {processedImage && (
+                    <div>
+                      <button
+                        onClick={handleDownload}
+                        className="w-full flex items-center justify-center gap-2 bg-gray-900 text-white px-4 py-2 rounded hover:bg-gray-800"
+                      >
+                        <Download size={20} />
+                        Download PNG
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        function SliderControl({ label, value, onChange, min = 0, max = 100, step = 1, color }) {
+          const getSliderStyle = () => {
+            if (!color) return {};
+            
+            const colorMap = {
+              red: 'linear-gradient(to right, #ffffff, #ff0000)',
+              yellow: 'linear-gradient(to right, #ffffff, #ffff00)',
+              green: 'linear-gradient(to right, #ffffff, #00ff00)',
+              cyan: 'linear-gradient(to right, #ffffff, #00ffff)',
+              blue: 'linear-gradient(to right, #ffffff, #0000ff)',
+              magenta: 'linear-gradient(to right, #ffffff, #ff00ff)'
+            };
+            
+            return {
+              background: colorMap[color] || '',
+              height: '8px',
+              borderRadius: '4px',
+              appearance: 'none',
+              WebkitAppearance: 'none'
+            };
+          };
+
+          return (
+            <div>
+              <div className="flex justify-between text-sm mb-1">
+                <label className="text-gray-700">{label}</label>
+                <span className="text-gray-500">{value}</span>
+              </div>
+              <input
+                type="range"
+                min={min}
+                max={max}
+                step={step}
+                value={value}
+                onChange={(e) => onChange(Number(e.target.value))}
+                className="w-full"
+                style={color ? getSliderStyle() : {}}
+              />
+            </div>
+          );
+        }
+
+        ReactDOM.render(<HalftoneGenerator />, document.getElementById('root'));
+    </script>
+</body>
+</html>
+                    ) : (
+                      <div className="relative w-full h-full">
+                        <canvas
+                          ref={displayCanvasRef}
+                          onMouseDown={handleCanvasMouseDown}
+                          className="w-full h-full"
+                          style={{ display: 'block' }}
+                        />
+                        <canvas ref={canvasRef} className="hidden" />
+                        
+                        {contourPoints && processedImage && (
+                          <svg
+                            className="absolute top-0 left-0 pointer-events-none w-full h-full"
+                            viewBox="0 0 1080 1080"
+                            preserveAspectRatio="xMidYMid meet"
+                          >
+                            {(() => {
+                              const offsetX = (1080 - processedImage.width) / 2;
+                              const offsetY = (1080 - processedImage.height) / 2;
+                              
+                              return (
+                                <>
+                                  <polyline
+                                    points={contourPoints.map(p => `${p.x + offsetX},${p.y + offsetY}`).join(' ')}
+                                    fill="none"
+                                    stroke="#3b82f6"
+                                    strokeWidth="2"
+                                    strokeDasharray="5,5"
+                                  />
+                                  <line
+                                    x1={contourPoints[contourPoints.length - 1].x + offsetX}
+                                    y1={contourPoints[contourPoints.length - 1].y + offsetY}
+                                    x2={contourPoints[0].x + offsetX}
+                                    y2={contourPoints[0].y + offsetY}
+                                    stroke="#3b82f6"
+                                    strokeWidth="2"
+                                    strokeDasharray="5,5"
+                                  />
+                                  {contourPoints.map((point, i) => (
+                                    <circle
+                                      key={i}
+                                      cx={point.x + offsetX}
+                                      cy={point.y + offsetY}
+                                      r="8"
+                                      fill={selectedPoint === i ? '#ef4444' : '#3b82f6'}
+                                      stroke="white"
+                                      strokeWidth="2"
+                                      style={{ pointerEvents: 'auto', cursor: 'move' }}
+                                      onMouseDown={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedPoint(i);
+                                        setIsDragging(true);
+                                      }}
+                                    />
+                                  ))}
+                                </>
+                              );
+                            })()}
+                          </svg>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
